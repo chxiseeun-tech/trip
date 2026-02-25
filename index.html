@@ -8,69 +8,144 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="bg-gray-50 text-gray-800">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
+
+        // 아이콘을 위한 컴포넌트
+        const Icon = ({ name, size = 18, className = "" }) => {
+            useEffect(() => { lucide.createIcons(); }, []);
+            return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+        };
 
         function App() {
+            const [activeTab, setActiveTab] = useState('generate');
             const [inputText, setInputText] = useState('');
-            const [result, setResult] = useState('');
             const [loading, setLoading] = useState(false);
+            const [currentResult, setCurrentResult] = useState(null);
+            const [history, setHistory] = useState([]);
+            const [error, setError] = useState(null);
+            const [toastMessage, setToastMessage] = useState(null);
 
-            const callGemini = async () => {
-                if (!inputText.trim()) return;
-                setLoading(true);
-                
-                // 1. 세은님 API 키 적용 완료
+            // 로컬 스토리지에서 기록 불러오기
+            useEffect(() => {
+                const saved = localStorage.getItem('tripcom_reviews_history');
+                if (saved) setHistory(JSON.parse(saved));
+            }, []);
+
+            // 기록 저장하기
+            useEffect(() => {
+                localStorage.setItem('tripcom_reviews_history', JSON.stringify(history));
+                if (window.lucide) lucide.createIcons();
+            }, [history, activeTab]);
+
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => setToastMessage(null), 2500);
+            };
+
+            const parseInput = (text) => {
+                let count = 1;
+                let place = text.trim();
+                const match = place.match(/ㅁ(\d+)$/);
+                if (match) {
+                    count = parseInt(match[1], 10);
+                    place = place.replace(/ㅁ\d+$/, '').trim();
+                }
+                return { place, count };
+            };
+
+            const callGeminiAPI = async (place, count) => {
                 const apiKey = "AIzaSyAqXbxMdcprEQaHLhdEmwMSKw3ZMjSFOMM"; 
-                // 2. 404 에러 원인이었던 모델명을 정상적인 gemini-1.5-flash로 수정
+                // 에러가 났던 주소를 정상적인 1.5-flash 모델로 수정했습니다.
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
+                const systemPrompt = `당신은 트립닷컴의 전문 리뷰 작성가입니다. 규칙: 1. 제목 앞 이모지 2. 본문 400~500자 3. 💫팁 포함 🚫금지: 오글거리는 멘트, 한글(영어) 병기, 마크다운 기호, 제목에 장소명 기입. 결과를 JSON으로 주세요.`;
+                const userPrompt = `장소: ${place}, 개수: ${count}개. 지역 분류(서울, 경기도 등)와 리뷰를 생성해줘.`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: userPrompt }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] },
+                        generationConfig: { responseMimeType: "application/json" }
+                    })
+                });
+
+                if (!response.ok) throw new Error("API 호출 실패");
+                const data = await response.json();
+                return JSON.parse(data.candidates[0].content.parts[0].text);
+            };
+
+            const handleGenerate = async (e) => {
+                e.preventDefault();
+                setLoading(true); setError(null);
+                const { place, count } = parseInput(inputText);
                 try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: `${inputText}에 대한 트립닷컴 리뷰를 규칙(400자 내외, 꿀팁 포함)에 맞춰 작성해줘.` }] }]
-                        })
-                    });
-                    
-                    if (!response.ok) throw new Error(`HTTP 에러: ${response.status}`);
-                    
-                    const data = await response.json();
-                    setResult(data.candidates[0].content.parts[0].text);
-                } catch (e) {
-                    alert("에러가 발생했습니다. API 키나 모델 주소를 확인하세요.");
-                } finally {
-                    setLoading(false);
-                }
+                    const resultData = await callGeminiAPI(place, count);
+                    const newItem = {
+                        id: Date.now().toString(),
+                        place,
+                        category: resultData.category || '기타',
+                        date: new Date().toLocaleString(),
+                        reviews: resultData.reviews
+                    };
+                    setCurrentResult(newItem);
+                    setHistory(prev => [newItem, ...prev]);
+                    setInputText('');
+                } catch (err) {
+                    setError("리뷰 생성 중 오류가 발생했습니다.");
+                } finally { setLoading(false); }
+            };
+
+            const copyToClipboard = (review) => {
+                const text = `${review.title}\n\n${review.body}\n\n💫팁\n${review.tips.map(t => `· ${t}`).join('\n')}`;
+                navigator.clipboard.writeText(text).then(() => showToast("복사되었습니다!"));
             };
 
             return (
-                <div className="max-w-2xl mx-auto p-8">
-                    <h1 className="text-3xl font-bold text-blue-600 mb-8 text-center">🚢 트립닷컴 리뷰 작성기</h1>
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <input 
-                            type="text" 
-                            className="w-full p-4 border-2 rounded-xl focus:border-blue-500 outline-none"
-                            placeholder="장소를 입력하세요 (예: 여수 라테라스 ㅁ2)"
-                            value={inputText}
-                            onChange={(e) => setInputText(e.target.value)}
-                        />
-                        <button 
-                            onClick={callGemini}
-                            className="w-full mt-4 bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 transition"
-                            disabled={loading}
-                        >
-                            {loading ? "작성 중..." : "리뷰 생성하기"}
-                        </button>
+                <div className="max-w-3xl mx-auto p-4 md:p-8">
+                    {toastMessage && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full z-50">{toastMessage}</div>}
+                    
+                    <div className="flex space-x-2 bg-gray-200 p-1.5 rounded-2xl w-fit mx-auto mb-8">
+                        <button onClick={() => setActiveTab('generate')} className={`px-6 py-2 rounded-xl font-medium ${activeTab==='generate' ? 'bg-white text-blue-600 shadow' : 'text-gray-500'}`}>리뷰 생성</button>
+                        <button onClick={() => setActiveTab('history')} className={`px-6 py-2 rounded-xl font-medium ${activeTab==='history' ? 'bg-white text-blue-600 shadow' : 'text-gray-500'}`}>기록 ({history.length})</button>
                     </div>
-                    {result && (
-                        <div className="mt-8 bg-white p-6 rounded-2xl shadow-md border whitespace-pre-wrap leading-relaxed">
-                            {result}
+
+                    {activeTab === 'generate' ? (
+                        <div className="space-y-6">
+                            <div className="bg-white p-8 rounded-2xl shadow-sm border">
+                                <h1 className="text-2xl font-bold mb-4">✈️ 트립닷컴 리뷰 작성</h1>
+                                <form onSubmit={handleGenerate} className="relative">
+                                    <input type="text" value={inputText} onChange={e=>setInputText(e.target.value)} placeholder="예: 여수 라테라스 ㅁ2" className="w-full p-4 pr-16 rounded-xl border-2 outline-none focus:border-blue-500 text-lg" />
+                                    <button type="submit" className="absolute right-2 top-2 bottom-2 px-4 bg-blue-600 text-white rounded-lg flex items-center">{loading ? <Icon name="refresh-cw" className="animate-spin" /> : <Icon name="send" />}</button>
+                                </form>
+                            </div>
+                            {currentResult && currentResult.reviews.map((r, i) => (
+                                <div key={i} className="bg-white p-6 rounded-2xl border mb-4 relative shadow-sm">
+                                    <button onClick={() => copyToClipboard(r)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-lg"><Icon name="copy" /></button>
+                                    <h2 className="text-xl font-bold mb-4 pr-12">{r.title}</h2>
+                                    <p className="text-gray-700 mb-6 leading-relaxed whitespace-pre-wrap">{r.body}</p>
+                                    <div className="bg-gray-50 p-4 rounded-xl border"><strong>💫팁</strong><ul className="mt-2">{r.tips.map((t, idx) => <li key={idx}>· {t}</li>)}</ul></div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {history.map(item => (
+                                <div key={item.id} className="bg-white p-4 rounded-xl border flex justify-between items-center">
+                                    <div>
+                                        <div className="font-bold">{item.place} <span className="text-sm font-normal text-blue-500">({item.category})</span></div>
+                                        <div className="text-xs text-gray-400">{item.date}</div>
+                                    </div>
+                                    <button onClick={() => { setHistory(history.filter(h => h.id !== item.id)); showToast("삭제됨"); }} className="p-2 text-gray-300 hover:text-red-500"><Icon name="trash-2" /></button>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
