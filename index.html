@@ -1,449 +1,332 @@
-import React, { useState, useEffect } from 'react';
-import { Copy, Loader2, Send, CheckCircle2, AlertCircle, RefreshCw, History, Edit3, MapPin, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
-
-export default function App() {
-  const [activeTab, setActiveTab] = useState('generate'); // 'generate' | 'history'
-  const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [currentResult, setCurrentResult] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [error, setError] = useState(null);
-  const [toastMessage, setToastMessage] = useState(null);
-  const [expandedCategories, setExpandedCategories] = useState({});
-  const [expandedItems, setExpandedItems] = useState({});
-
-  // 컴포넌트 마운트 시 로컬 스토리지에서 기록 불러오기
-  useEffect(() => {
-    const savedHistory = localStorage.getItem('tripcom_reviews_history');
-    if (savedHistory) {
-      try {
-        setHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error("기록을 불러오는데 실패했습니다.", e);
-      }
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>트립닷컴 리뷰 생성기</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @keyframes fade-in-down {
+      0% { opacity: 0; transform: translate(-50%, -20px); }
+      100% { opacity: 1; transform: translate(-50%, 0); }
     }
-  }, []);
-
-  // 기록이 변경될 때마다 로컬 스토리지에 저장
-  useEffect(() => {
-    localStorage.setItem('tripcom_reviews_history', JSON.stringify(history));
-  }, [history]);
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
-  };
-
-  const parseInput = (text) => {
-    let count = 1;
-    let place = text.trim();
-    // 'ㅁ숫자' 패턴 감지 (예: ㅁ2, ㅁ3)
-    const match = place.match(/ㅁ(\d+)$/);
-    if (match) {
-      count = parseInt(match[1], 10);
-      place = place.replace(/ㅁ\d+$/, '').trim();
-    } else if (place.endsWith('ㅁ')) {
-      // 실수로 숫자 없이 ㅁ만 친 경우 기본 1개로 처리하고 ㅁ은 제거
-      place = place.replace(/ㅁ$/, '').trim();
+    @keyframes fade-in {
+      0% { opacity: 0; transform: translateY(10px); }
+      100% { opacity: 1; transform: translateY(0); }
     }
-    return { place, count };
-  };
+    .animate-fade-in-down { animation: fade-in-down 0.3s ease-out forwards; }
+    .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+  <div id="root"></div>
 
-  const callGeminiAPI = async (place, count) => {
-    const apiKey = ""; // System will inject this
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  <script type="text/babel">
+    const { useState, useEffect } = React;
 
-    const systemPrompt = `
-      당신은 트립닷컴의 전문 리뷰 작성가이자 지리 전문가입니다. 
-      사용자가 입력한 장소에 대해 아래 규칙을 따라 지역을 분류하고 리뷰를 작성해야 합니다.
-      여러 개를 요청받을 경우, 각 리뷰는 시점, 분위기, 강조 포인트가 완전히 다른 버전으로 작성하세요.
+    // --- 아이콘 컴포넌트 ---
+    const IconCopy = () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>;
+    const IconSend = () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>;
+    const IconLoader = () => <svg className="animate-spin" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>;
+    const IconHistory = ({size=18, className=""}) => <svg width={size} height={size} className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>;
+    const IconEdit = () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>;
+    const IconMapPin = () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>;
+    const IconTrash = () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
+    const IconChevronUp = ({size=18}) => <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"></polyline></svg>;
+    const IconChevronDown = ({size=18}) => <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>;
+    const IconCheck = () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>;
+    const IconAlert = () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>;
+    const IconRefresh = () => <svg width="32" height="32" className="text-blue-500 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>;
 
-      [분류 규칙]
-      입력된 장소를 파악하여 다음 중 하나의 카테고리로 정확히 분류하세요:
-      "서울", "경기도", "강원도", "충청도", "전라도", "경상도", "제주도", "기타"(해외 또는 불분명)
-      (예: 구례/여수->전라도, 하동/부산->경상도, 잠실/롯데월드->서울)
+    function App() {
+      const [activeTab, setActiveTab] = useState('generate');
+      const [inputText, setInputText] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [currentResult, setCurrentResult] = useState(null);
+      const [history, setHistory] = useState([]);
+      const [error, setError] = useState(null);
+      const [toastMessage, setToastMessage] = useState(null);
+      const [expandedCategories, setExpandedCategories] = useState({});
+      const [expandedItems, setExpandedItems] = useState({});
 
-      [작성 규칙]
-      1. 제목: 앞부분에 이모지를 1개 넣으세요 (리뷰마다 다른 이모지 사용). 명사형으로 간결하게 끝내세요.
-      2. 본문: 글자수 400~500자 내외로 작성하며, 본문에 자연스럽게 장소명을 1~2회 기재하세요.
-      3. 팁: 본문 작성 후 문단을 띄우고 실용적인 꿀팁(시간대, 입장료, 운영시간, 인기 기구, 사진 명당 등) 2~3개를 요약하세요.
+      // ⭐⭐⭐ 여기에 세은님의 구글 API 키를 넣어주세요! ⭐⭐⭐
+      const apiKey = "AIzaSyAqXbxMdcprEQaHLhdEmwMSKw3ZMjSFOMM"; 
 
-      [🚫 절대 금지 사항 - 위반 시 실패]
-      1. 오글거리는 과한 감성 멘트 금지 (공기가 달라졌어요, 시간 속을 걷는, 조용히 시선이 머무는 등)
-      2. 한글(영어) 병기 표기 절대 금지 (예: 라테라스(La Terrace) -> 불가)
-      3. ***장소명*** 또는 **장소명** 같은 마크다운 강조 기호 절대 금지
-      4. 반점(,) 남발 금지
-      5. 서술형 제목 금지 (~한 곳이에요, ~하기 좋아요 등)
-      6. 제목에 장소명 기입 절대 금지
-      7. 연속적으로 비슷한 느낌의 제목 금지 (예: ㅇㅇ와 ㅇㅇ가 공존하는 곳, ㅇㅇ와 ㅇㅇ가 함께하는 곳)
-      8. 출력 결과물 외 사담 금지
-    `;
-
-    const userPrompt = `장소: ${place}\n작성 개수: ${count}개\n위 장소의 지역을 분류하고, 리뷰를 규칙에 맞춰 생성해주세요.`;
-
-    const payload = {
-      contents: [{ parts: [{ text: userPrompt }] }],
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            category: { 
-              type: "STRING", 
-              description: "서울, 경기도, 강원도, 충청도, 전라도, 경상도, 제주도, 기타 중 택1" 
-            },
-            reviews: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  title: { type: "STRING" },
-                  body: { type: "STRING" },
-                  tips: { type: "ARRAY", items: { type: "STRING" } }
-                },
-                required: ["title", "body", "tips"]
-              }
-            }
-          },
-          required: ["category", "reviews"]
+      useEffect(() => {
+        const savedHistory = localStorage.getItem('tripcom_reviews_history');
+        if (savedHistory) {
+          try { setHistory(JSON.parse(savedHistory)); } catch (e) {}
         }
-      }
-    };
+      }, []);
 
-    let retries = 0;
-    const maxRetries = 5;
-    const delays = [1000, 2000, 4000, 8000, 16000];
+      useEffect(() => {
+        localStorage.setItem('tripcom_reviews_history', JSON.stringify(history));
+      }, [history]);
 
-    while (retries <= maxRetries) {
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-        
-        const data = await response.json();
-        const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        if (textResult) return JSON.parse(textResult);
-        throw new Error('응답 데이터를 찾을 수 없습니다.');
-      } catch (err) {
-        if (retries === maxRetries) throw err;
-        await new Promise(resolve => setTimeout(resolve, delays[retries]));
-        retries++;
-      }
-    }
-  };
-
-  const handleGenerate = async (e) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-
-    setLoading(true);
-    setError(null);
-    setCurrentResult(null);
-
-    const { place, count } = parseInput(inputText);
-
-    try {
-      const resultData = await callGeminiAPI(place, count);
-      
-      const newHistoryItem = {
-        id: Date.now().toString(),
-        place: place,
-        category: resultData.category || '기타',
-        date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-        reviews: resultData.reviews
+      const showToast = (msg) => {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(null), 2500);
       };
 
-      setCurrentResult(newHistoryItem);
-      setHistory(prev => [newHistoryItem, ...prev]); // 기록의 맨 앞에 추가
-      setInputText(''); // 입력창 초기화
-      
-    } catch (err) {
-      console.error(err);
-      setError("리뷰를 생성하는 중 오류가 발생했습니다. 다시 시도해주세요.");
-    } finally {
-      setLoading(false);
-    }
-  };
+      const parseInput = (text) => {
+        let count = 1;
+        let place = text.trim();
+        const match = place.match(/ㅁ(\d+)$/);
+        if (match) {
+          count = parseInt(match[1], 10);
+          place = place.replace(/ㅁ\d+$/, '').trim();
+        } else if (place.endsWith('ㅁ')) {
+          place = place.replace(/ㅁ$/, '').trim();
+        }
+        return { place, count };
+      };
 
-  const copyToClipboard = (review) => {
-    const tipString = review.tips.map(t => `· ${t}`).join('\n');
-    const fullText = `${review.title}\n\n${review.body}\n\n💫팁\n${tipString}`;
-
-    const textArea = document.createElement("textarea");
-    textArea.value = fullText;
-    document.body.appendChild(textArea);
-    textArea.select();
-    try {
-      document.execCommand('copy');
-      showToast("리뷰가 클립보드에 복사되었습니다!");
-    } catch (err) {
-      showToast("복사에 실패했습니다.");
-    }
-    document.body.removeChild(textArea);
-  };
-
-  const deleteHistoryItem = (id) => {
-    if (window.confirm("이 기록을 삭제하시겠습니까?")) {
-      setHistory(prev => prev.filter(item => item.id !== id));
-      if (currentResult && currentResult.id === id) {
-        setCurrentResult(null);
-      }
-      showToast("삭제되었습니다.");
-    }
-  };
-
-  const toggleCategory = (category) => {
-    setExpandedCategories(prev => ({ ...prev, [category]: !prev[category] }));
-  };
-
-  const toggleHistoryItem = (id) => {
-    setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  // 기록을 카테고리별로 그룹화
-  const groupedHistory = history.reduce((acc, item) => {
-    const cat = item.category || '기타';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(item);
-    return acc;
-  }, {});
-
-  const categoriesOrder = ["서울", "경기도", "강원도", "충청도", "전라도", "경상도", "제주도", "기타"];
-  const sortedCategories = Object.keys(groupedHistory).sort((a, b) => {
-    const indexA = categoriesOrder.indexOf(a);
-    const indexB = categoriesOrder.indexOf(b);
-    return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
-  });
-
-  // 리뷰 렌더링 컴포넌트
-  const ReviewCard = ({ review }) => (
-    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 relative group transition-all hover:shadow-md mb-4">
-      <button
-        onClick={() => copyToClipboard(review)}
-        className="absolute top-6 right-6 p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg flex items-center space-x-2 transition-colors"
-        title="복사하기"
-      >
-        <Copy size={18} />
-        <span className="text-sm font-medium hidden sm:inline-block">복사</span>
-      </button>
-      <div className="pr-20">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">{review.title}</h2>
-        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap mb-6 text-justify">
-          {review.body}
-        </p>
-        <div className="bg-gray-50 rounded-xl p-5 border border-gray-100">
-          <h3 className="font-bold text-gray-900 mb-2 flex items-center">💫팁</h3>
-          <ul className="space-y-1.5">
-            {review.tips.map((tip, idx) => (
-              <li key={idx} className="text-gray-600 text-sm flex items-start">
-                <span className="mr-2 text-gray-400">·</span>
-                <span>{tip}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans p-4 md:p-8">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-50 flex items-center space-x-2 animate-fade-in-down">
-          <CheckCircle2 size={18} className="text-green-400" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      <div className="max-w-4xl mx-auto space-y-6">
+      const callGeminiAPI = async (place, count) => {
+        if (!apiKey) throw new Error("API 키가 입력되지 않았습니다. 코드 42번째 줄을 확인해주세요.");
         
-        {/* Navigation Tabs */}
-        <div className="flex space-x-2 bg-gray-200/50 p-1.5 rounded-2xl w-full sm:w-fit mx-auto">
-          <button
-            onClick={() => setActiveTab('generate')}
-            className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-medium transition-all ${
-              activeTab === 'generate' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Edit3 size={18} />
-            <span>새 리뷰 작성</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-medium transition-all ${
-              activeTab === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <History size={18} />
-            <span>이전 기록 보기</span>
-            {history.length > 0 && (
-              <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full ml-2">
-                {history.length}
-              </span>
-            )}
-          </button>
-        </div>
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        const systemPrompt = `
+          당신은 트립닷컴의 전문 리뷰 작성가이자 지리 전문가입니다. 
+          [분류 규칙]
+          입력된 장소를 파악하여 다음 중 하나의 카테고리로 정확히 분류하세요:
+          "서울", "경기도", "강원도", "충청도", "전라도", "경상도", "제주도", "기타"(해외 또는 불분명)
+          [작성 규칙]
+          1. 제목: 앞부분에 이모지를 1개 넣으세요. 명사형으로 간결하게 끝내세요.
+          2. 본문: 글자수 400~500자 내외로 작성하며, 본문에 자연스럽게 장소명을 1~2회 기재하세요.
+          3. 팁: 본문 작성 후 문단을 띄우고 실용적인 꿀팁 2~3개를 요약하세요.
+          [🚫 절대 금지 사항]
+          1. 오글거리는 과한 감성 멘트 금지 2. 한글(영어) 병기 표기 절대 금지 3. 마크다운 강조 기호 절대 금지 4. 반점(,) 남발 금지 5. 서술형 제목 금지 6. 제목에 장소명 기입 절대 금지 7. 연속적으로 비슷한 느낌의 제목 금지 8. 출력 결과물 외 사담 금지
+        `;
 
-        {/* --- 탭 1: 새 리뷰 작성 --- */}
-        {activeTab === 'generate' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">✈️ 트립닷컴 리뷰 작성</h1>
-              <p className="text-sm text-gray-500 mb-6">
-                장소명을 입력하세요. <br className="sm:hidden" />
-                (예: <code>여수 라테라스 ㅁ2</code> → 2개 생성, <code>롯데월드 ㅁ3</code> → 3개 생성)
-              </p>
+        const userPrompt = `장소: ${place}\n작성 개수: ${count}개\n위 장소의 지역을 분류하고, 리뷰를 규칙에 맞춰 생성해주세요.`;
 
-              <form onSubmit={handleGenerate} className="relative">
-                <input
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="예: 구례 화엄사 ㅁ2"
-                  className="w-full pl-4 pr-14 py-4 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-0 outline-none transition-all text-lg"
-                  disabled={loading}
-                />
-                <button
-                  type="submit"
-                  disabled={loading || !inputText.trim()}
-                  className="absolute right-2 top-2 bottom-2 aspect-square bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
-                >
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                </button>
-              </form>
+        const payload = {
+          contents: [{ parts: [{ text: userPrompt }] }],
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                category: { type: "STRING" },
+                reviews: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: { title: { type: "STRING" }, body: { type: "STRING" }, tips: { type: "ARRAY", items: { type: "STRING" } } },
+                    required: ["title", "body", "tips"]
+                  }
+                }
+              },
+              required: ["category", "reviews"]
+            }
+          }
+        };
+
+        let retries = 0;
+        const delays = [1000, 2000, 4000];
+        while (retries < 3) {
+          try {
+            const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            const data = await response.json();
+            return JSON.parse(data.candidates[0].content.parts[0].text);
+          } catch (err) {
+            if (retries === 2) throw err;
+            await new Promise(r => setTimeout(r, delays[retries]));
+            retries++;
+          }
+        }
+      };
+
+      const handleGenerate = async (e) => {
+        e.preventDefault();
+        if (!inputText.trim()) return;
+        setLoading(true); setError(null); setCurrentResult(null);
+
+        const { place, count } = parseInput(inputText);
+
+        try {
+          const resultData = await callGeminiAPI(place, count);
+          const newHistoryItem = {
+            id: Date.now().toString(), place, category: resultData.category || '기타',
+            date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            reviews: resultData.reviews
+          };
+          setCurrentResult(newHistoryItem);
+          setHistory(prev => [newHistoryItem, ...prev]);
+          setInputText('');
+        } catch (err) {
+          setError(err.message || "리뷰를 생성하는 중 오류가 발생했습니다.");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const copyToClipboard = (review) => {
+        const fullText = `${review.title}\n\n${review.body}\n\n💫팁\n${review.tips.map(t => '· ' + t).join('\n')}`;
+        const textArea = document.createElement("textarea");
+        textArea.value = fullText; document.body.appendChild(textArea); textArea.select();
+        try { document.execCommand('copy'); showToast("복사되었습니다!"); } 
+        catch (err) { showToast("복사에 실패했습니다."); }
+        document.body.removeChild(textArea);
+      };
+
+      const deleteHistoryItem = (id) => {
+        if (window.confirm("이 기록을 삭제하시겠습니까?")) {
+          setHistory(prev => prev.filter(item => item.id !== id));
+          if (currentResult && currentResult.id === id) setCurrentResult(null);
+        }
+      };
+
+      const groupedHistory = history.reduce((acc, item) => {
+        const cat = item.category || '기타';
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(item); return acc;
+      }, {});
+      const categoriesOrder = ["서울", "경기도", "강원도", "충청도", "전라도", "경상도", "제주도", "기타"];
+      const sortedCategories = Object.keys(groupedHistory).sort((a, b) => {
+        const indexA = categoriesOrder.indexOf(a); const indexB = categoriesOrder.indexOf(b);
+        return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
+      });
+
+      const ReviewCard = ({ review }) => (
+        <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 relative group mb-4">
+          <button onClick={() => copyToClipboard(review)} className="absolute top-6 right-6 p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg flex items-center space-x-2">
+            <IconCopy /> <span className="text-sm font-medium hidden sm:inline-block">복사</span>
+          </button>
+          <div className="pr-20">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">{review.title}</h2>
+            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap mb-6">{review.body}</p>
+            <div className="bg-gray-50 rounded-xl p-5 border border-gray-100">
+              <h3 className="font-bold text-gray-900 mb-2">💫팁</h3>
+              <ul className="space-y-1.5">
+                {review.tips.map((tip, idx) => (
+                  <li key={idx} className="text-gray-600 text-sm flex items-start"><span className="mr-2 text-gray-400">·</span><span>{tip}</span></li>
+                ))}
+              </ul>
             </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center space-x-3">
-                <AlertCircle size={20} />
-                <p>{error}</p>
-              </div>
-            )}
-
-            {loading && (
-              <div className="bg-white p-12 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center space-y-4">
-                <RefreshCw size={32} className="text-blue-500 animate-spin" />
-                <p className="text-gray-500 animate-pulse text-center">
-                  세은님의 규칙에 맞춰 리뷰를 작성하고 있어요.<br/>
-                  잠시만 기다려주세요!
-                </p>
-              </div>
-            )}
-
-            {!loading && currentResult && (
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg w-fit">
-                  <MapPin size={18} />
-                  <span className="font-semibold">{currentResult.place}</span>
-                  <span className="text-sm text-blue-400">({currentResult.category})</span>
-                </div>
-                {currentResult.reviews.map((review, index) => (
-                  <ReviewCard key={index} review={review} />
-                ))}
-              </div>
-            )}
           </div>
-        )}
+        </div>
+      );
 
-        {/* --- 탭 2: 이전 기록 보기 --- */}
-        {activeTab === 'history' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 animate-fade-in min-h-[50vh]">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-              <History size={24} className="mr-2 text-blue-600" />
-              저장된 리뷰 기록
-            </h2>
+      return (
+        <div className="min-h-screen p-4 md:p-8 max-w-4xl mx-auto space-y-6">
+          {toastMessage && (
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-50 flex items-center space-x-2 animate-fade-in-down">
+              <IconCheck /><span>{toastMessage}</span>
+            </div>
+          )}
 
-            {history.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <p>아직 작성된 리뷰 기록이 없습니다.</p>
+          <div className="flex space-x-2 bg-gray-200/50 p-1.5 rounded-2xl w-full sm:w-fit mx-auto">
+            <button onClick={() => setActiveTab('generate')} className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-medium ${activeTab === 'generate' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              <IconEdit /><span>새 리뷰 작성</span>
+            </button>
+            <button onClick={() => setActiveTab('history')} className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-medium ${activeTab === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              <IconHistory /><span>이전 기록 보기</span>
+              {history.length > 0 && <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full ml-2">{history.length}</span>}
+            </button>
+          </div>
+
+          {activeTab === 'generate' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">✈️ 트립닷컴 리뷰 작성</h1>
+                <p className="text-sm text-gray-500 mb-6">장소명을 입력하세요. (예: <code>여수 라테라스 ㅁ2</code>)</p>
+                <form onSubmit={handleGenerate} className="relative">
+                  <input type="text" value={inputText} onChange={e => setInputText(e.target.value)} placeholder="예: 구례 화엄사 ㅁ2" className="w-full pl-4 pr-14 py-4 rounded-xl border-2 border-gray-200 focus:border-blue-500 outline-none text-lg" disabled={loading} />
+                  <button type="submit" disabled={loading || !inputText.trim()} className="absolute right-2 top-2 bottom-2 aspect-square bg-blue-600 text-white rounded-lg flex items-center justify-center disabled:opacity-50">
+                    {loading ? <IconLoader /> : <IconSend />}
+                  </button>
+                </form>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {sortedCategories.map(category => (
-                  <div key={category} className="border border-gray-200 rounded-xl overflow-hidden">
-                    {/* 카테고리 헤더 */}
-                    <button
-                      onClick={() => toggleCategory(category)}
-                      className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <span className="font-bold text-gray-800 text-lg">{category}</span>
-                        <span className="bg-white border border-gray-200 text-gray-500 text-xs px-2.5 py-0.5 rounded-full">
-                          {groupedHistory[category].length}건
-                        </span>
-                      </div>
-                      {expandedCategories[category] ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
-                    </button>
 
-                    {/* 카테고리 내 장소 목록 (아코디언) */}
-                    {expandedCategories[category] && (
-                      <div className="divide-y divide-gray-100 bg-white">
-                        {groupedHistory[category].map(item => (
-                          <div key={item.id} className="p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <button
-                                onClick={() => toggleHistoryItem(item.id)}
-                                className="flex-1 flex items-center justify-between text-left hover:text-blue-600 transition-colors"
-                              >
-                                <div>
-                                  <h4 className="font-semibold text-md">{item.place}</h4>
-                                  <p className="text-xs text-gray-400 mt-0.5">{item.date}</p>
-                                </div>
-                                {expandedItems[item.id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                              </button>
-                              <button
-                                onClick={() => deleteHistoryItem(item.id)}
-                                className="ml-4 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                title="기록 삭제"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-
-                            {/* 저장된 리뷰 상세 내용 */}
-                            {expandedItems[item.id] && (
-                              <div className="mt-4 space-y-4 pl-2 border-l-2 border-blue-100">
-                                {item.reviews.map((review, idx) => (
-                                  <ReviewCard key={idx} review={review} />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+              {error && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl flex items-center space-x-3"><IconAlert /><p>{error}</p></div>}
+              {loading && <div className="bg-white p-12 rounded-2xl flex flex-col items-center space-y-4"><IconRefresh /><p className="text-gray-500 animate-pulse">리뷰 작성 중...</p></div>}
+              
+              {!loading && currentResult && (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg w-fit">
+                    <IconMapPin />
+                    <span className="font-semibold">{currentResult.place}</span>
+                    <span className="text-sm">({currentResult.category})</span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                  {currentResult.reviews.map((review, index) => (
+                    <ReviewCard key={index} review={review} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-      </div>
+          {activeTab === 'history' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 animate-fade-in min-h-[50vh]">
+              <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
+                <IconHistory className="mr-2 text-blue-600" size={24} />
+                저장된 리뷰 기록
+              </h2>
 
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes fade-in-down {
-          0% { opacity: 0; transform: translate(-50%, -20px); }
-          100% { opacity: 1; transform: translate(-50%, 0); }
-        }
-        @keyframes fade-in {
-          0% { opacity: 0; transform: translateY(10px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-down {
-          animation: fade-in-down 0.3s ease-out forwards;
-        }
-        .animate-fade-in {
-          animation: fade-in 0.3s ease-out forwards;
-        }
-      `}} />
-    </div>
-  );
-}
+              {history.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <p>아직 작성된 리뷰 기록이 없습니다.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {sortedCategories.map(category => (
+                    <div key={category} className="border border-gray-200 rounded-xl overflow-hidden">
+                      <button onClick={() => setExpandedCategories(prev => ({...prev, [category]: !prev[category]}))} className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="flex items-center space-x-3">
+                          <span className="font-bold text-gray-800 text-lg">{category}</span>
+                          <span className="bg-white border border-gray-200 text-gray-500 text-xs px-2.5 py-0.5 rounded-full">{groupedHistory[category].length}건</span>
+                        </div>
+                        {expandedCategories[category] ? <IconChevronUp size={20} /> : <IconChevronDown size={20} />}
+                      </button>
+
+                      {expandedCategories[category] && (
+                        <div className="divide-y divide-gray-100 bg-white">
+                          {groupedHistory[category].map(item => (
+                            <div key={item.id} className="p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <button onClick={() => setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className="flex-1 flex items-center justify-between text-left hover:text-blue-600 transition-colors">
+                                  <div>
+                                    <h4 className="font-semibold text-md">{item.place}</h4>
+                                    <p className="text-xs text-gray-400 mt-0.5">{item.date}</p>
+                                  </div>
+                                  {expandedItems[item.id] ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
+                                </button>
+                                <button onClick={() => deleteHistoryItem(item.id)} className="ml-4 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="기록 삭제">
+                                  <IconTrash />
+                                </button>
+                              </div>
+                              {expandedItems[item.id] && (
+                                <div className="mt-4 space-y-4 pl-2 border-l-2 border-blue-100">
+                                  {item.reviews.map((review, idx) => (
+                                    <ReviewCard key={idx} review={review} />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
