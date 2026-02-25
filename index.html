@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Copy, Loader2, Send, CheckCircle2, AlertCircle, RefreshCw, History, Edit3, MapPin, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('generate'); // 'generate' | 'history'
+  const [activeTab, setActiveTab] = useState('generate');
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentResult, setCurrentResult] = useState(null);
@@ -12,7 +12,6 @@ export default function App() {
   const [expandedCategories, setExpandedCategories] = useState({});
   const [expandedItems, setExpandedItems] = useState({});
 
-  // 컴포넌트 마운트 시 로컬 스토리지에서 기록 불러오기
   useEffect(() => {
     const savedHistory = localStorage.getItem('tripcom_reviews_history');
     if (savedHistory) {
@@ -24,7 +23,6 @@ export default function App() {
     }
   }, []);
 
-  // 기록이 변경될 때마다 로컬 스토리지에 저장
   useEffect(() => {
     localStorage.setItem('tripcom_reviews_history', JSON.stringify(history));
   }, [history]);
@@ -37,13 +35,11 @@ export default function App() {
   const parseInput = (text) => {
     let count = 1;
     let place = text.trim();
-    // 'ㅁ숫자' 패턴 감지 (예: ㅁ2, ㅁ3)
     const match = place.match(/ㅁ(\d+)$/);
     if (match) {
       count = parseInt(match[1], 10);
       place = place.replace(/ㅁ\d+$/, '').trim();
     } else if (place.endsWith('ㅁ')) {
-      // 실수로 숫자 없이 ㅁ만 친 경우 기본 1개로 처리하고 ㅁ은 제거
       place = place.replace(/ㅁ$/, '').trim();
     }
     return { place, count };
@@ -64,7 +60,6 @@ export default function App() {
       [분류 규칙]
       입력된 장소를 파악하여 다음 중 하나의 카테고리로 정확히 분류하세요:
       "서울", "경기도", "강원도", "충청도", "전라도", "경상도", "제주도", "기타"(해외 또는 불분명)
-      (예: 구례/여수->전라도, 하동/부산->경상도, 잠실/롯데월드->서울)
 
       [작성 규칙]
       1. 제목: 앞부분에 이모지를 1개 넣으세요 (리뷰마다 다른 이모지 사용). 명사형으로 간결하게 끝내세요.
@@ -72,13 +67,13 @@ export default function App() {
       3. 팁: 본문 작성 후 문단을 띄우고 실용적인 꿀팁(시간대, 입장료, 운영시간, 인기 기구, 사진 명당 등) 2~3개를 요약하세요.
 
       [🚫 절대 금지 사항 - 위반 시 실패]
-      1. 오글거리는 과한 감성 멘트 금지 (공기가 달라졌어요, 시간 속을 걷는, 조용히 시선이 머무는 등)
-      2. 한글(영어) 병기 표기 절대 금지 (예: 라테라스(La Terrace) -> 불가)
-      3. ***장소명*** 또는 **장소명** 같은 마크다운 강조 기호 절대 금지
+      1. 오글거리는 과한 감성 멘트 금지 
+      2. 한글(영어) 병기 표기 절대 금지 
+      3. 마크다운 강조 기호 절대 금지
       4. 반점(,) 남발 금지
-      5. 서술형 제목 금지 (~한 곳이에요, ~하기 좋아요 등)
+      5. 서술형 제목 금지 
       6. 제목에 장소명 기입 절대 금지
-      7. 연속적으로 비슷한 느낌의 제목 금지 (예: ㅇㅇ와 ㅇㅇ가 공존하는 곳, ㅇㅇ와 ㅇㅇ가 함께하는 곳)
+      7. 연속적으로 비슷한 느낌의 제목 금지 
       8. 출력 결과물 외 사담 금지
     `;
 
@@ -115,8 +110,8 @@ export default function App() {
     };
 
     let retries = 0;
-    const maxRetries = 5;
-    const delays = [1000, 2000, 4000, 8000, 16000];
+    const maxRetries = 3;
+    const delays = [1000, 2000, 4000];
 
     while (retries <= maxRetries) {
       try {
@@ -126,12 +121,20 @@ export default function App() {
           body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+        if (!response.ok) {
+           const errorData = await response.json();
+           console.error("API 통신 오류:", errorData);
+           throw new Error(`HTTP Error: ${response.status}`);
+        }
         
         const data = await response.json();
-        const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        let textResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
         
-        if (textResult) return JSON.parse(textResult);
+        if (textResult) {
+            // AI가 가끔 마크다운 코드블럭(```json)을 보내는 버그 방지용 안전장치
+            textResult = textResult.replace(/```json/gi, '').replace(/```/g, '').trim();
+            return JSON.parse(textResult);
+        }
         throw new Error('응답 데이터를 찾을 수 없습니다.');
       } catch (err) {
         if (retries === maxRetries) throw err;
@@ -163,8 +166,8 @@ export default function App() {
       };
 
       setCurrentResult(newHistoryItem);
-      setHistory(prev => [newHistoryItem, ...prev]); // 기록의 맨 앞에 추가
-      setInputText(''); // 입력창 초기화
+      setHistory(prev => [newHistoryItem, ...prev]);
+      setInputText('');
       
     } catch (err) {
       console.error(err);
@@ -178,8 +181,20 @@ export default function App() {
     const tipString = review.tips.map(t => `· ${t}`).join('\n');
     const fullText = `${review.title}\n\n${review.body}\n\n💫팁\n${tipString}`;
 
+    // 클립보드 복사 안전 로직
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(fullText).then(() => {
+            showToast("리뷰가 클립보드에 복사되었습니다!");
+        }).catch(() => fallbackCopy(fullText));
+    } else {
+        fallbackCopy(fullText);
+    }
+  };
+
+  const fallbackCopy = (text) => {
     const textArea = document.createElement("textarea");
-    textArea.value = fullText;
+    textArea.value = text;
+    textArea.style.position = "fixed";
     document.body.appendChild(textArea);
     textArea.select();
     try {
@@ -209,7 +224,6 @@ export default function App() {
     setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // 기록을 카테고리별로 그룹화
   const groupedHistory = history.reduce((acc, item) => {
     const cat = item.category || '기타';
     if (!acc[cat]) acc[cat] = [];
@@ -224,7 +238,6 @@ export default function App() {
     return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
   });
 
-  // 리뷰 렌더링 컴포넌트
   const ReviewCard = ({ review }) => (
     <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 relative group transition-all hover:shadow-md mb-4">
       <button
@@ -257,7 +270,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans p-4 md:p-8">
-      {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-50 flex items-center space-x-2 animate-fade-in-down">
           <CheckCircle2 size={18} className="text-green-400" />
@@ -266,8 +278,6 @@ export default function App() {
       )}
 
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Navigation Tabs */}
         <div className="flex space-x-2 bg-gray-200/50 p-1.5 rounded-2xl w-full sm:w-fit mx-auto">
           <button
             onClick={() => setActiveTab('generate')}
@@ -294,14 +304,13 @@ export default function App() {
           </button>
         </div>
 
-        {/* --- 탭 1: 새 리뷰 작성 --- */}
         {activeTab === 'generate' && (
           <div className="space-y-6 animate-fade-in">
             <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
               <h1 className="text-2xl font-bold text-gray-900 mb-2">✈️ 트립닷컴 리뷰 작성</h1>
               <p className="text-sm text-gray-500 mb-6">
                 장소명을 입력하세요. <br className="sm:hidden" />
-                (예: <code>여수 라테라스 ㅁ2</code> → 2개 생성, <code>롯데월드 ㅁ3</code> → 3개 생성)
+                (예: <code>여수 라테라스 ㅁ2</code> → 2개 생성)
               </p>
 
               <form onSubmit={handleGenerate} className="relative">
@@ -355,7 +364,6 @@ export default function App() {
           </div>
         )}
 
-        {/* --- 탭 2: 이전 기록 보기 --- */}
         {activeTab === 'history' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 animate-fade-in min-h-[50vh]">
             <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
@@ -371,7 +379,6 @@ export default function App() {
               <div className="space-y-4">
                 {sortedCategories.map(category => (
                   <div key={category} className="border border-gray-200 rounded-xl overflow-hidden">
-                    {/* 카테고리 헤더 */}
                     <button
                       onClick={() => toggleCategory(category)}
                       className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
@@ -385,7 +392,6 @@ export default function App() {
                       {expandedCategories[category] ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
                     </button>
 
-                    {/* 카테고리 내 장소 목록 (아코디언) */}
                     {expandedCategories[category] && (
                       <div className="divide-y divide-gray-100 bg-white">
                         {groupedHistory[category].map(item => (
@@ -410,7 +416,6 @@ export default function App() {
                               </button>
                             </div>
 
-                            {/* 저장된 리뷰 상세 내용 */}
                             {expandedItems[item.id] && (
                               <div className="mt-4 space-y-4 pl-2 border-l-2 border-blue-100">
                                 {item.reviews.map((review, idx) => (
@@ -428,7 +433,6 @@ export default function App() {
             )}
           </div>
         )}
-
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
