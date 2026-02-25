@@ -55,7 +55,7 @@
       const [expandedCategories, setExpandedCategories] = useState({});
       const [expandedItems, setExpandedItems] = useState({});
 
-      // ⭐⭐⭐ 여기에 세은님의 구글 API 키를 넣어주세요! ⭐⭐⭐
+      // 세은님의 구글 API 키 (외부 배포용)
       const apiKey = "AIzaSyAqXbxMdcprEQaHLhdEmwMSKw3ZMjSFOMM"; 
 
       useEffect(() => {
@@ -88,9 +88,11 @@
       };
 
       const callGeminiAPI = async (place, count) => {
-        if (!apiKey) throw new Error("API 키가 입력되지 않았습니다. 코드 42번째 줄을 확인해주세요.");
+        if (!apiKey) throw new Error("API 키가 입력되지 않았습니다.");
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        // 정식 배포용 모델 gemini-1.5-flash
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        
         const systemPrompt = `
           당신은 트립닷컴의 전문 리뷰 작성가이자 지리 전문가입니다. 
           [분류 규칙]
@@ -130,15 +132,16 @@
         };
 
         let retries = 0;
-        const delays = [1000, 2000, 4000];
-        while (retries < 3) {
+        const delays = [1000, 2000, 4000, 8000, 16000];
+        
+        while (retries <= 5) {
           try {
             const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const data = await response.json();
             return JSON.parse(data.candidates[0].content.parts[0].text);
           } catch (err) {
-            if (retries === 2) throw err;
+            if (retries === 5) throw err;
             await new Promise(r => setTimeout(r, delays[retries]));
             retries++;
           }
@@ -163,7 +166,7 @@
           setHistory(prev => [newHistoryItem, ...prev]);
           setInputText('');
         } catch (err) {
-          setError(err.message || "리뷰를 생성하는 중 오류가 발생했습니다.");
+          setError(err.message || "리뷰를 생성하는 중 오류가 발생했습니다. 다시 시도해주세요.");
         } finally {
           setLoading(false);
         }
