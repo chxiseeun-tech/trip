@@ -14,14 +14,13 @@
 <div id="root"></div>
 
 <script type="text/babel">
-const { useEffect, useMemo, useState } = React;
+const { useEffect, useState } = React;
 
 const Icon = ({ name, size = 18, className = "" }) => {
     useEffect(() => { if (window.lucide) lucide.createIcons(); }, []);
     return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
 };
 
-const REGION_ORDER = ["서울", "경기도", "강원도", "충청도", "전라도", "경상도", "제주도", "기타"];
 const EMOJIS = ["🌿", "🎡", "🏞️", "🏛️", "✨", "🎠", "🌙", "🏖️"];
 const TITLE_POOL = [
     "동선이 편한 하루 코스",
@@ -77,67 +76,109 @@ const parseInput = (text) => {
     };
 };
 
-const chooseTips = (place) => {
-    for (const key of Object.keys(TIP_MAP)) {
-        if (place.includes(key)) return TIP_MAP[key];
+const shuffle = (arr) => {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
     }
-    return ["오전 오픈 시간대에 맞추면 대기 시간 줄이기 쉬워요", "인기 구간은 입구보다 안쪽부터 먼저 보면 이동이 효율적이에요"];
+    return copy;
+};
+
+const chooseTips = (place) => {
+    const baseTips = ["오전 오픈 시간대에 맞추면 대기 시간 줄이기 쉬워요", "인기 구간은 입구보다 안쪽부터 먼저 보면 이동이 효율적이에요", "주말은 점심 직후보다 이른 오후가 체감 대기 시간이 짧아요", "돌아가는 길 교통이 막히기 전 30분 일찍 이동하면 피로가 줄어요"];
+    for (const key of Object.keys(TIP_MAP)) {
+        if (place.includes(key)) return shuffle(TIP_MAP[key]).slice(0, 2);
+    }
+    return shuffle(baseTips).slice(0, 2);
 };
 
 const clampLength = (text, min = 400, max = 500) => {
+    const fillers = [
+        " 이동 흐름이 단순해서 초행 방문도 부담이 적었고 식사와 휴식 구간을 나누기 편했어요.",
+        " 체류 시간이 길어져도 지루하지 않았고 이동 간격이 무리하지 않아 전체 일정이 안정적이었어요.",
+        " 현장 동선이 명확해서 계획을 많이 세우지 않아도 핵심 구간을 놓치지 않기 좋았어요."
+    ];
     let result = text;
-    const filler = " 이동 동선이 단순해서 초행 방문도 부담이 적었고 식사와 휴식 구간을 나누기 쉬웠어요.";
-    while (result.length < min) result += filler;
+    while (result.length < min) {
+        result += fillers[Math.floor(Math.random() * fillers.length)];
+    }
     if (result.length > max) result = result.slice(0, max - 1) + ".";
     return result;
 };
 
-const makeBody = (place, variantType, index) => {
-    const introSet = variantType === "alt"
-        ? [
-            `${place}은 일정 짜기 편한 여행지라서 첫 방문에도 흐름이 자연스러웠어요. 입구부터 핵심 구간까지 안내가 명확해서 동선 고민이 줄었고 사람 많은 구간도 우회하기 쉬웠어요.`,
-            `${place}은 기대보다 구성 밀도가 좋아서 짧은 시간에도 핵심을 챙기기 좋았어요. 공간 간격이 답답하지 않고 휴식 구간이 중간마다 있어서 일정 피로가 덜했어요.`
+const BODY_PARTS = {
+    default: {
+        intro: [
+            "{place}은 주요 포인트가 한 방향으로 이어져서 처음 가도 일정이 깔끔하게 정리됐어요.",
+            "{place}은 입장 후 동선이 단순해서 이동에 에너지를 많이 쓰지 않아도 됐어요.",
+            "{place}은 공간 간격이 답답하지 않아서 짧은 일정에도 핵심 코스를 편하게 담기 좋았어요."
+        ],
+        middle: [
+            "현장 안내가 분명해서 어디서 쉬고 어디서 오래 볼지 빠르게 판단할 수 있었어요.",
+            "피크 시간만 피해 움직이면 대기 체감이 크게 줄어서 실제 체류 만족도가 높았어요.",
+            "주요 구간이 끊기지 않아 흐름이 자연스럽고 사진 포인트도 과하지 않게 이어졌어요."
+        ],
+        outro: [
+            "전체적으로 {place}은 준비를 많이 하지 않아도 완성도 있는 하루를 만들기 좋은 코스였어요.",
+            "정리하면 {place}은 동행 취향이 달라도 무난하게 만족하기 좋은 일정형 장소였어요.",
+            "결론적으로 {place}은 재방문 때 다른 동선으로 확장하기 쉬운 구조라 활용도가 높았어요."
         ]
-        : [
-            `${place}은 이동 동선이 분명해서 하루 일정으로 담기 좋은 장소였어요. 주요 구간이 끊기지 않아 걷는 흐름이 깔끔했고 사진 포인트와 체험 구간이 자연스럽게 이어졌어요.`,
-            `${place}은 시설 관리가 안정적이고 안내가 또렷해서 방문 난도가 낮았어요. 처음 가도 길 찾기 어렵지 않고 중간 휴식 공간이 넉넉해서 체력 분배가 쉬웠어요.`
-        ];
-
-    const middleSet = variantType === "alt"
-        ? [
-            `특히 ${place}에서는 붐비는 시간대와 한산한 시간대 차이가 분명해서 시간만 잘 맞추면 체감 만족도가 크게 올라가요. 주변 편의시설 접근도 좋아서 이동 스트레스가 적었고 코스 전환도 빠르게 할 수 있었어요.`,
-            `${place}은 핵심 포인트가 한 방향으로 이어져서 이동 효율이 높았어요. 현장 분위기가 과장되지 않아 오래 머물기 편했고 동행 인원 취향이 달라도 각자 즐길 구간이 분명했어요.`
+    },
+    alt: {
+        intro: [
+            "{place}은 핵심 포인트 집중형으로 즐기기 좋아서 짧은 방문에도 밀도 있게 볼 수 있었어요.",
+            "{place}은 시간대를 잘 고르면 체감 난도가 확 내려가서 첫 방문자에게도 부담이 적었어요.",
+            "{place}은 구간별 분위기 차이가 확실해서 같은 날 안에서도 다른 느낌으로 즐기기 좋았어요."
+        ],
+        middle: [
+            "입구보다 안쪽부터 먼저 보면 혼잡 구간을 피하기 쉬워서 체력 소모가 크게 줄었어요.",
+            "편의시설 접근이 좋아서 쉬는 타이밍을 잡기 좋고 일정 리듬이 끊기지 않았어요.",
+            "여러 포인트를 무리해서 담기보다 중심 코스를 길게 보는 방식이 만족도가 더 높았어요."
+        ],
+        outro: [
+            "총평하면 {place}은 과하게 빡빡하지 않은 일정으로도 결과가 좋은 실속형 선택이었어요.",
+            "한 번에 전부 보려 하지 않아도 {place}의 강점을 충분히 느낄 수 있어서 재방문 계획이 쉬웠어요.",
+            "전체 흐름이 안정적이라 {place}은 주말 일정에서도 시간 관리가 편한 편이었어요."
         ]
-        : [
-            `${place}은 시간대별 분위기 차이가 커서 같은 공간도 다르게 즐길 수 있었어요. 낮에는 전체 구조를 확인하기 좋고 저녁에는 조명과 야간 포인트가 살아나서 체류 시간이 길어졌어요.`,
-            `${place} 주변은 식사 선택지가 많아서 일정 중간에 쉬어 가기 좋았어요. 무리하게 이동하지 않아도 핵심 포인트를 모두 챙길 수 있고 재방문 때는 다른 코스로 확장하기도 수월해요.`
-        ];
+    }
+};
 
-    const outroSet = variantType === "alt"
-        ? [
-            `정리하면 ${place}은 과한 준비 없이도 완성도 있는 하루를 만들기 좋은 선택지였어요.`,
-            `전체적으로 ${place}은 실속 있게 즐기기 좋은 코스라서 재방문 계획을 세우기 쉬웠어요.`
-        ]
-        : [
-            `결론적으로 ${place}은 일정 완성도와 체류 만족도를 동시에 챙기기 좋은 장소였어요.`,
-            `전체 인상이 안정적이라 ${place}은 동행 구성과 계절에 상관없이 다시 찾기 좋은 코스였어요.`
-        ];
+const makeBody = (place, variantType) => {
+    const set = BODY_PARTS[variantType];
+    const intro = shuffle(set.intro)[0].replaceAll('{place}', place);
+    const middle = shuffle(set.middle)[0].replaceAll('{place}', place);
+    const outro = shuffle(set.outro)[0].replaceAll('{place}', place);
+    const detailA = shuffle([
+        `${place} 주변은 식사와 카페 선택 폭이 넓어서 이동 동선을 짧게 유지하기 좋았어요.`,
+        `${place}은 구간 전환이 빠른 편이라 동행과 속도가 달라도 합류가 쉬웠어요.`,
+        `${place}은 야외와 실내 포인트 균형이 좋아 날씨 변수에도 대응이 편했어요.`
+    ])[0];
+    const detailB = shuffle([
+        `특히 머무는 시간을 길게 잡을 구간과 빠르게 지나갈 구간이 명확해서 계획 수정이 쉬웠어요.`,
+        `무리하게 많은 코스를 넣지 않아도 핵심 경험을 챙길 수 있어서 일정 피로가 덜했어요.`,
+        `현장 분위기가 과장되지 않아 사진도 자연스럽게 정리되고 이동 템포도 안정적이었어요.`
+    ])[0];
 
-    const intro = introSet[index % introSet.length];
-    const middle = middleSet[index % middleSet.length];
-    const outro = outroSet[index % outroSet.length];
-    return clampLength(`${intro}\n\n${middle}\n\n${outro}`);
+    return clampLength(`${intro} ${detailA}
+
+${middle} ${detailB}
+
+${outro}`);
 };
 
 const createReviews = (place, count, alt) => {
     const reviews = [];
+    const titleOrder = shuffle(TITLE_POOL);
+    const emojiOrder = shuffle(EMOJIS);
+
     for (let i = 0; i < count; i++) {
-        const emoji = EMOJIS[i % EMOJIS.length];
-        const titleCore = TITLE_POOL[(i + (alt ? 3 : 0)) % TITLE_POOL.length];
+        const style = alt ? (i % 2 === 0 ? 'alt' : 'default') : (Math.random() > 0.5 ? 'default' : 'alt');
+        const titleCore = titleOrder[i % titleOrder.length];
         reviews.push({
-            title: `${emoji} ${titleCore}`,
-            body: makeBody(place, alt ? "alt" : "default", i),
-            tips: chooseTips(place).slice(0, 2)
+            title: `${emojiOrder[i % emojiOrder.length]} ${titleCore}`,
+            body: makeBody(place, style),
+            tips: chooseTips(place)
         });
     }
     return reviews;
@@ -160,15 +201,6 @@ function App() {
         localStorage.setItem("trip_reviews_v2", JSON.stringify(history));
         if (window.lucide) lucide.createIcons();
     }, [history, activeTab]);
-
-    const groupedHistory = useMemo(() => {
-        const groups = REGION_ORDER.reduce((acc, region) => ({ ...acc, [region]: [] }), {});
-        history.forEach((item) => {
-            if (!groups[item.category]) groups[item.category] = [];
-            groups[item.category].push(item);
-        });
-        return groups;
-    }, [history]);
 
     const showToast = (message) => {
         setToastMessage(message);
@@ -266,29 +298,27 @@ function App() {
                 </>
             ) : (
                 <div className="space-y-6">
-                    {REGION_ORDER.map((region) => (
-                        <section key={region} className="bg-white border rounded-2xl p-5 shadow-sm">
-                            <h3 className="font-bold text-lg mb-3">{region}</h3>
-                            {groupedHistory[region] && groupedHistory[region].length > 0 ? (
-                                <div className="space-y-3">
-                                    {groupedHistory[region].map((item) => (
-                                        <div key={item.id} className="rounded-xl border p-3 bg-slate-50">
-                                            <div className="flex justify-between items-center gap-3">
-                                                <div>
-                                                    <div className="font-semibold">{item.place}</div>
-                                                    <div className="text-xs text-slate-400">{item.date}</div>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => { setCurrentResult(item); setActiveTab("generate"); }} className="px-3 h-8 rounded-lg bg-white border text-sm">열기</button>
-                                                    <button onClick={() => setHistory((prev) => prev.filter((h) => h.id !== item.id))} className="px-3 h-8 rounded-lg bg-white border text-sm text-red-500">삭제</button>
-                                                </div>
+                    <section className="bg-white border rounded-2xl p-5 shadow-sm">
+                        <h3 className="font-bold text-lg mb-3">이전 기록</h3>
+                        {history.length > 0 ? (
+                            <div className="space-y-3">
+                                {history.map((item) => (
+                                    <div key={item.id} className="rounded-xl border p-3 bg-slate-50">
+                                        <div className="flex justify-between items-center gap-3">
+                                            <div>
+                                                <div className="font-semibold">{item.place}</div>
+                                                <div className="text-xs text-slate-400">{item.date}</div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => { setCurrentResult(item); setActiveTab("generate"); }} className="px-3 h-8 rounded-lg bg-white border text-sm">열기</button>
+                                                <button onClick={() => setHistory((prev) => prev.filter((h) => h.id !== item.id))} className="px-3 h-8 rounded-lg bg-white border text-sm text-red-500">삭제</button>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : <p className="text-sm text-slate-400">기록 없음</p>}
-                        </section>
-                    ))}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : <p className="text-sm text-slate-400">기록 없음</p>}
+                    </section>
                 </div>
             )}
         </div>
